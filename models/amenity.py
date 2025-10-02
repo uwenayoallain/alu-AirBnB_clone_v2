@@ -19,7 +19,8 @@ class Amenity(BaseModel, Base):
 
     if USE_DB_STORAGE:
         name = Column(String(128), nullable=False)
-        place_amenities = relationship('Place', secondary='place_amenity',
-                                       viewonly=False)
+        place_amenities = relationship(
+            'Place', secondary='place_amenity', viewonly=False,
+            back_populates='amenities')
     else:
         name = ""
