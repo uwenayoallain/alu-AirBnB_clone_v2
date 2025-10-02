@@ -73,8 +73,8 @@ class HBNBCommand(cmd.Cmd):
                 pline = pline[2].strip()  # pline is now str
                 if pline:
                     # check for *args or **kwargs
-                    if pline[0] is '{' and pline[-1] is'}'\
-                            and type(eval(pline)) is dict:
+                    if pline[0] == '{' and pline[-1] == '}' \
+                            and isinstance(eval(pline), dict):
                         _args = pline
                     else:
                         _args = pline.replace(',', '')
@@ -113,23 +113,70 @@ class HBNBCommand(cmd.Cmd):
         """ Overrides the emptyline method of CMD """
         pass
 
+    def _parse_value(self, value):
+        """Parse parameter value according to syntax rules"""
+        try:
+            if value.startswith('"') and value.endswith('"'):
+                string_value = value[1:-1]
+                string_value = string_value.replace('\\"', '"')
+                string_value = string_value.replace('_', ' ')
+                return string_value
+
+            if '.' in value:
+                return float(value)
+
+            return int(value)
+
+        except (ValueError, TypeError):
+            return None
+
     def do_create(self, args):
         """ Create an object of any class"""
         if not args:
             print("** class name missing **")
             return
-        elif args not in HBNBCommand.classes:
+
+        # Parse arguments
+        arg_list = args.split()
+        class_name = arg_list[0]
+
+        if class_name not in HBNBCommand.classes:
             print("** class doesn't exist **")
             return
-        new_instance = HBNBCommand.classes[args]()
-        storage.save()
+
+        # Parse parameters if provided
+        kwargs = {}
+        if len(arg_list) > 1:
+            for param in arg_list[1:]:
+                if '=' in param:
+                    key, value = param.split('=', 1)
+                    parsed_value = self._parse_value(value)
+                    if parsed_value is not None:
+                        kwargs[key] = parsed_value
+
+        # Create instance and apply provided parameters
+        new_instance = HBNBCommand.classes[class_name]()
+        for key, value in kwargs.items():
+            if key in {'id', 'created_at', 'updated_at', '__class__'}:
+                continue
+            if not key.isidentifier():
+                continue
+            setattr(new_instance, key, value)
+
+        new_instance.save()
         print(new_instance.id)
-        storage.save()
 
     def help_create(self):
         """ Help information for the create method """
         print("Creates a class of any type")
-        print("[Usage]: create <className>\n")
+        print("[Usage]: create <className> "
+              "[<param 1>=<value 1> <param 2>=<value 2> ...]")
+        print("Param syntax: <key name>=<value>")
+        print("Value syntax:")
+        print("  String: \"<value>\" => starts with double quote, "
+              "underscores become spaces")
+        print("  Float: <unit>.<decimal> => contains a dot")
+        print("  Integer: <number> => default case\n")
 
     def do_show(self, args):
         """ Method to show an individual object """
@@ -154,9 +201,10 @@ class HBNBCommand(cmd.Cmd):
             return
 
         key = c_name + "." + c_id
-        try:
-            print(storage._FileStorage__objects[key])
-        except KeyError:
+        objects = storage.all()
+        if key in objects:
+            print(objects[key])
+        else:
             print("** no instance found **")
 
     def help_show(self):
@@ -185,11 +233,11 @@ class HBNBCommand(cmd.Cmd):
             return
 
         key = c_name + "." + c_id
-
-        try:
-            del(storage.all()[key])
+        objects = storage.all()
+        if key in objects:
+            storage.delete(objects[key])
             storage.save()
-        except KeyError:
+        else:
             print("** no instance found **")
 
     def help_destroy(self):
@@ -202,15 +250,14 @@ class HBNBCommand(cmd.Cmd):
         print_list = []
 
         if args:
-            args = args.split(' ')[0]  # remove possible trailing args
+            args = args.split(' ')[0]
             if args not in HBNBCommand.classes:
                 print("** class doesn't exist **")
                 return
-            for k, v in storage._FileStorage__objects.items():
-                if k.split('.')[0] == args:
-                    print_list.append(str(v))
+            for v in storage.all(HBNBCommand.classes[args]).values():
+                print_list.append(str(v))
         else:
-            for k, v in storage._FileStorage__objects.items():
+            for v in storage.all().values():
                 print_list.append(str(v))
 
         print(print_list)
@@ -222,11 +269,10 @@ class HBNBCommand(cmd.Cmd):
 
     def do_count(self, args):
         """Count current number of class instances"""
-        count = 0
-        for k, v in storage._FileStorage__objects.items():
-            if args == k.split('.')[0]:
-                count += 1
-        print(count)
+        if args in HBNBCommand.classes:
+            print(len(storage.all(HBNBCommand.classes[args]).keys()))
+        else:
+            print(0)
 
     def help_count(self):
         """ """
@@ -264,15 +310,19 @@ class HBNBCommand(cmd.Cmd):
             return
 
         # first determine if kwargs or args
-        if '{' in args[2] and '}' in args[2] and type(eval(args[2])) is dict:
-            kwargs = eval(args[2])
-            args = []  # reformat kwargs into list, ex: [<name>, <value>, ...]
-            for k, v in kwargs.items():
-                args.append(k)
-                args.append(v)
+        if '{' in args[2] and '}' in args[2]:
+            potential_dict = eval(args[2])
+            if isinstance(potential_dict, dict):
+                kwargs = potential_dict
+                args = []  # flatten kwargs into alternating name/value items
+                for k, v in kwargs.items():
+                    args.append(k)
+                    args.append(v)
+            else:
+                potential_dict = None
         else:  # isolate args
             args = args[2]
-            if args and args[0] is '\"':  # check for quoted arg
+            if args and args[0] == '\"':  # check for quoted arg
                 second_quote = args.find('\"', 1)
                 att_name = args[1:second_quote]
                 args = args[second_quote + 1:]
@@ -280,10 +330,10 @@ class HBNBCommand(cmd.Cmd):
             args = args.partition(' ')
 
             # if att_name was not quoted arg
-            if not att_name and args[0] is not ' ':
+            if not att_name and args[0] != ' ':
                 att_name = args[0]
             # check for quoted val arg
-            if args[2] and args[2][0] is '\"':
+            if args[2] and args[2][0] == '\"':
                 att_val = args[2][1:args[2].find('\"', 1)]
 
             # if att_val was not quoted arg
@@ -319,6 +369,7 @@ class HBNBCommand(cmd.Cmd):
         """ Help information for the update class """
         print("Updates an object with new information")
         print("Usage: update <className> <id> <attName> <attVal>\n")
+
 
 if __name__ == "__main__":
     HBNBCommand().cmdloop()

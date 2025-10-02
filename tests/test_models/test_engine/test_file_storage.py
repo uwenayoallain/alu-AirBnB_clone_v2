@@ -41,6 +41,26 @@ class test_fileStorage(unittest.TestCase):
         temp = storage.all()
         self.assertIsInstance(temp, dict)
 
+    def test_all_cls_filter(self):
+        """ all(cls) returns only objects of given class """
+        from models.user import User
+        u = User()
+        b = BaseModel()
+        objs = storage.all('User')
+        for key in objs.keys():
+            self.assertTrue(key.startswith('User.'))
+        objs2 = storage.all(User)
+        for key in objs2.keys():
+            self.assertTrue(key.startswith('User.'))
+
+    def test_delete(self):
+        """ delete removes object when present """
+        new = BaseModel()
+        key = 'BaseModel.' + new.id
+        self.assertIn(key, storage.all())
+        storage.delete(new)
+        self.assertNotIn(key, storage.all())
+
     def test_base_model_instantiation(self):
         """ File is not created on BaseModel save """
         new = BaseModel()
