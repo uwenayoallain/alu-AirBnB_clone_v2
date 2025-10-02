@@ -1,0 +1,23 @@
+# Python bytecode and cache directories
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+ENV/
+.venv/
+
+# IDE/project settings
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Test and coverage artifacts
+*.coverage
+.coverage*
+htmlcov/
+
+# Miscellaneous
+.DS_Store
