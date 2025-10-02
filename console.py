@@ -10,6 +10,7 @@ from models.state import State
 from models.city import City
 from models.amenity import Amenity
 from models.review import Review
+from models.place_amenity import PlaceAmenity
 
 
 class HBNBCommand(cmd.Cmd):
@@ -21,7 +22,7 @@ class HBNBCommand(cmd.Cmd):
     classes = {
                'BaseModel': BaseModel, 'User': User, 'Place': Place,
                'State': State, 'City': City, 'Amenity': Amenity,
-               'Review': Review
+               'Review': Review, 'PlaceAmenity': PlaceAmenity
               }
     dot_cmds = ['all', 'count', 'show', 'destroy', 'update']
     types = {
@@ -157,7 +158,44 @@ class HBNBCommand(cmd.Cmd):
                     if parsed_value is not None:
                         kwargs[key] = parsed_value
 
-        # Create instance and apply provided parameters
+        # Special-case creation of PlaceAmenity: link Amenity to Place
+        if class_name == 'PlaceAmenity':
+            place_id = kwargs.get('place_id')
+            amenity_id = kwargs.get('amenity_id')
+            if not place_id or not amenity_id:
+                print('** place_id and amenity_id required **')
+                return
+
+            # Find Place and Amenity by id
+            place = None
+            amenity = None
+            for obj in storage.all(Place).values():
+                if getattr(obj, 'id', None) == place_id:
+                    place = obj
+                    break
+            for obj in storage.all(Amenity).values():
+                if getattr(obj, 'id', None) == amenity_id:
+                    amenity = obj
+                    break
+            if place is None:
+                print('** no Place found **')
+                return
+            if amenity is None:
+                print('** no Amenity found **')
+                return
+
+            # Link depending on storage engine
+            import os
+            if os.getenv('HBNB_TYPE_STORAGE') == 'db':
+                if amenity not in place.amenities:
+                    place.amenities.append(amenity)
+                    storage.save()
+            else:
+                place.amenities = amenity
+                storage.save()
+            return
+
+        # Create instance and apply provided parameters (default path)
         new_instance = HBNBCommand.classes[class_name]()
         for key, value in kwargs.items():
             if key in {'id', 'created_at', 'updated_at', '__class__'}:
